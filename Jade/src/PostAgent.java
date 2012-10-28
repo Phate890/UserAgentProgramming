@@ -104,10 +104,17 @@ public class PostAgent extends Agent {
 
         }
 
+        /**
+         * This method finds the best available agent to perform his task on the number 
+         * of letters specified
+         * @param letters - the number of letters that have to be handled by an agent
+         */
         public void doTask(int letters) {
             int topRating = 0;
             AID topAgent = null;
-
+            
+            //Send every agent a request to find out who can do work and who has
+            //enough time for the job
             for (int i = 2; i <= nrOfAgents; i++) {
                 ACLMessage msgrecMaster;
                 ACLMessage msgReq = new ACLMessage(ACLMessage.REQUEST);
@@ -115,23 +122,34 @@ public class PostAgent extends Agent {
                 msgReq.addReceiver(new AID("agent" + i, AID.ISLOCALNAME));
                 send(msgReq);
                 //System.out.println(msgReq);
-
+                
+                //Wait for a message back, receive does not seem to give reliable
+                //results, so therefore blockingReceive is used. This means all agents
+                //have to be able to send a message back at all time
                 msgrecMaster = blockingReceive();
                 if (msgrecMaster != null) {
+                    //The agents send back their current workload and time
                     String[] split = msgrecMaster.getContent().split(","); //letters, time
                     int curLett = Integer.parseInt(split[0]);
                     int curTime = Integer.parseInt(split[1]);
+                    //A rating is calculated based on workload and time, for this
+                    //program a simple 1 on 1 rate is being used for simplicity
                     int rating = curTime - curLett;
+                    //When the rating is sufficient and better than the rating found before
+                    //the agent and rating are updated to find the best agent for the job
                     if (rating >= letters && rating > topRating) {
                         topAgent = msgrecMaster.getSender();
                         topRating = rating;
                     }
                 }
             }
+            //The best agent has now been found, the agent will be notified and
+            //the task can be perfomed
             ACLMessage msgReq = new ACLMessage(ACLMessage.AGREE);
             msgReq.setContent(letters + "");
             msgReq.addReceiver(topAgent);
             send(msgReq);
+            //When an agent has been found, print its name for testing purpose
             if (topAgent != null) {
                 System.out.println(topAgent.getLocalName());
             }
