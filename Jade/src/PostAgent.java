@@ -17,21 +17,29 @@ import jade.lang.acl.ACLMessage;
 
 public class PostAgent extends Agent {
 
+    //set constants to clarify functions
     final int MASTER = 0;
-    final int NO_JOB = 1;
+    final int SLAVE = 1;
 
     @Override
     protected void setup() {
 
         Object[] args = getArguments();
-        int action = 0, nrOfLetters = 0;
+        int function = 0, nrOfLetters = 0, time = 0;
+        //Function holds the value for the agent to specify it as master or slave
         if (args[0] != null) {
-            action = Integer.parseInt((String) args[0]);
+            function = Integer.parseInt((String) args[0]);
         }
+        //number of letters currently held by an agent
         if (args[1] != null) {
             nrOfLetters = Integer.parseInt((String) args[1]);
         }
-
+        //available worktime an agent has
+        if (args[2] != null) {
+            time = Integer.parseInt((String) args[2]);
+        }
+        
+        //Search the system for all active agents
         AMSAgentDescription[] agents = null;
         try {
             SearchConstraints c = new SearchConstraints();
@@ -40,8 +48,11 @@ public class PostAgent extends Agent {
         } catch (Exception e) {
             System.out.println("Problem in finding agents: " + e);
         }
-
-        addBehaviour(new myBehaviour(this, nrOfLetters, action));
+        //substract 3 default agents to find the number of active agents we are using
+        int nrOfAgents = agents.length - 3;
+        
+        //Add behaviour to our agents
+        addBehaviour(new myBehaviour(this, nrOfLetters, time, function, nrOfAgents));
 
 
     }
@@ -50,57 +61,80 @@ public class PostAgent extends Agent {
 
         int nrOfLetters;
         int action;
+        int time;
+        int nrOfAgents;
+        boolean isAvailable = false;
 
-        public myBehaviour(Agent a, int nrOfLetters, int action) {
+        public myBehaviour(Agent a, int nrOfLetters, int time, int action, int nrOfAgents) {
             super(a);
             this.nrOfLetters = nrOfLetters;
+            this.time = time;
             this.action = action;
+            this.nrOfAgents = nrOfAgents;
         }
-        int n = 0;
-        boolean isAvailable = false;
 
         @Override
         public void action() {
-
-            ACLMessage msgReq = new ACLMessage(ACLMessage.REQUEST);
-            ACLMessage msgInf = new ACLMessage(ACLMessage.INFORM);
-            ACLMessage msgrec;
-
-
             switch (action) {
-                case NO_JOB:
-                    msgrec = receive();
-                    if (msgrec != null) {
-                        AID sender = msgrec.getSender();
+                //The slave agent listens to tasks all the time, upon receiving a message
+                //it either responds to inform the master of its current workload and 
+                //time, or adds the workload to his current workload
+                case SLAVE:
+                    ACLMessage msgrecSlave;
+                    msgrecSlave = receive();
+                    if (msgrecSlave != null && msgrecSlave.getPerformative() != ACLMessage.AGREE) {
+                        ACLMessage msgInf = new ACLMessage(ACLMessage.INFORM);
+                        AID sender = msgrecSlave.getSender();
                         msgInf.addReceiver(sender);
-                        msgInf.setContent("" + nrOfLetters);
+                        msgInf.setContent(nrOfLetters + "," + time);
                         send(msgInf);
+                    } else if (msgrecSlave != null && msgrecSlave.getPerformative() == ACLMessage.AGREE) {
+                        int letter = Integer.parseInt(msgrecSlave.getContent());
+                        nrOfLetters += letter;
                     }
                     break;
                 case MASTER:
-                    for (int i = 1; i < 3; i++) {
-                        msgReq.setContent("" + nrOfLetters);
-                        msgReq.addReceiver(new AID("agent" + i, AID.ISLOCALNAME));
-                        send(msgReq);
+                    doTask(6);
+                    doTask(4);
+                    doTask(4);
 
-                        msgrec = receive();
-                        if (msgrec != null) {
-                            /**
-                             * receive info from agent and save
-                             */
-                        }
-                    }
-
-                    /**
-                     * Calculate the best option and inform the agent
-                     */
                     isAvailable = true;
                     break;
             }
 
         }
 
-        public void sendAllAgents() {
+        public void doTask(int letters) {
+            int topRating = 0;
+            AID topAgent = null;
+
+            for (int i = 2; i <= nrOfAgents; i++) {
+                ACLMessage msgrecMaster;
+                ACLMessage msgReq = new ACLMessage(ACLMessage.REQUEST);
+                msgReq.setContent("Who is available for work?");
+                msgReq.addReceiver(new AID("agent" + i, AID.ISLOCALNAME));
+                send(msgReq);
+                //System.out.println(msgReq);
+
+                msgrecMaster = blockingReceive();
+                if (msgrecMaster != null) {
+                    String[] split = msgrecMaster.getContent().split(","); //letters, time
+                    int curLett = Integer.parseInt(split[0]);
+                    int curTime = Integer.parseInt(split[1]);
+                    int rating = curTime - curLett;
+                    if (rating >= letters && rating > topRating) {
+                        topAgent = msgrecMaster.getSender();
+                        topRating = rating;
+                    }
+                }
+            }
+            ACLMessage msgReq = new ACLMessage(ACLMessage.AGREE);
+            msgReq.setContent(letters + "");
+            msgReq.addReceiver(topAgent);
+            send(msgReq);
+            if (topAgent != null) {
+                System.out.println(topAgent.getLocalName());
+            }
         }
 
         @Override

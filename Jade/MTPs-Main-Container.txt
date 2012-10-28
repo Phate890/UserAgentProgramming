@@ -1,1 +1,1 @@
-http://145.92.79.42:7778/acc
+http://Bart-PC:7778/acc
